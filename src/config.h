@@ -6,6 +6,7 @@
 #endif
 #include "queue.h"
 #include "chars.h"
+#include "certs.h"
 #define DEBUG
 #include "debug.h"
 
@@ -15,14 +16,10 @@ int                   pin_CLK                       = CLK_PIN;
 int                   pin_DATA                      = DATA_PIN;
 int                   pin_CS                        = CS_PIN;
 
-// Wifi credentials
-const char*           wifi_ssid                     = "ACDrago";
-const char*           wifi_password                 = "C@!h3r1n3A@r0n";
-const long            wifi_recon_time               = 500;
-
 // MQTT connection details
-int                   mqtt_port                     = 1883;
-const char*           mqtt_server                   = "10.0.1.13";
+int                   mqtt_port                     = 8883;
+const char*           mqtt_server                   = "acdrago.com";
+const char*           mqtt_fingerprint              = "0C:4B:FA:99:E4:B5:46:E3:1A:E0:47:C1:69:D6:60:03:E6:CE:6F:F0";
 String                mqtt_client_type              = "ESP8266Ticker-" + String(random(0xffff), HEX);
 const uint32_t        controller_id                 = ESP.getChipId();
 const long            mqtt_recon_time               = 5000;
@@ -34,6 +31,12 @@ const char*           mqtt_endpoint                 = "tickers";
 char                  mqtt_endpoint_register[50];
 char                  mqtt_endpoint_subscribe[50];
 char                  mqtt_endpoint_message[100];
+
+// Wifi credentials
+const char*           wifi_ap_name                  = mqtt_client_type.c_str();
+const char*           wifi_ssid                     = "";
+const char*           wifi_password                 = "";
+const long            wifi_recon_time               = 500;
 
 // MQTT topic channels
 const char*           mqtt_topic_stat               = "status";
