@@ -8,10 +8,13 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <WiFiManager.h>
 #include "config.h"
 
 // Define wifi client for use in PubSubClient for MQTT
-WiFiClient espClient;
+WiFiClientSecure espClient;
 // Define the MQTT object
 PubSubClient client(mqtt_server, mqtt_port, espClient);
 
@@ -48,6 +51,23 @@ void wifi_connect()
   delay(wifi_recon_time);
 }
 
+bool wifi_verifyTLS()
+{
+  // Use WiFiClientSecure class to create TLS connection
+  DPRINT("\nConnecting to ");
+  DPRINTLN(mqtt_server);
+  if (!espClient.connect(mqtt_server, mqtt_port)) {
+    DPRINTLN("\nConnection failed");
+    return false;
+  }
+
+  if (!espClient.verify(mqtt_fingerprint, mqtt_server)) {
+    DPRINT("\nCertificate doesn't match");
+    return false;
+  }
+  return true;
+}
+
 // Setup function to set proper pin state
 void initialize_pins()
 {
@@ -70,6 +90,11 @@ void toggle_pin(int pin, int duration, int intervals)
 // [Re]Connect to MQTT Broker then subscribe to topics
 void mqtt_connect()
 {
+  // Check for secure connection
+  // if(!wifi_verifyTLS()){
+  //   return;
+  // }
+
   // Initialize failure count for breakout routine
   unsigned int failedAttempts = 0;
   // Attempt connection routine
@@ -79,7 +104,8 @@ void mqtt_connect()
     // Check number of failed attempts so far
     if(failedAttempts <= failed_breakout_limit) {
       // Attempt to connect and check status
-      if (client.connect(mqtt_client_type.c_str(), mqtt_username, mqtt_password)) {
+      //if (client.connect(mqtt_client_type.c_str(), mqtt_username, mqtt_password)){
+      if (client.connect(mqtt_client_type.c_str())){
         DPRINTLN("\nMQTT connected");
         mqtt_subscribe();
       // Connection was unnsuccessful
@@ -211,6 +237,8 @@ void print_message(message message)
   DPRINTLN(message.msgAction);
   DPRINT("Queue Wipe: ");
   DPRINTLN(message.queueWipe);
+  DPRINT("\nHeap: ");
+  DPRINTLN(ESP.getFreeHeap());
 }
 
 // Conversion function - int to textPosition_t
@@ -488,7 +516,15 @@ void setup()
   setup_parola();
 
   // Setup WiFi
-  wifi_connect();
+  //wifi_connect();
+  WiFiManager wifiManager;
+  //reset saved settings
+  //wifiManager.resetSettings();
+
+  wifiManager.autoConnect(wifi_ap_name);
+
+  espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
+  espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
 
   // Setup MQTT
   client.setCallback(receive_message);
