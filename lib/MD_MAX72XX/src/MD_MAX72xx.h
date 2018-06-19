@@ -8,61 +8,6 @@
  * \brief Main header file for the MD_MAX72xx library
  */
 
-//*********************************************************
-//* START SECTION - ADAPTING FOR DIFFERENT HARDWARE TYPES *
-//*********************************************************
-
-/* Select one of the hardware types by setting the USE_*_HW
- * below define value to 1 and all the other to 0.
- *
- * For more information see the documentation with this library
- * distribution or, for the same information online,
- * https://majicdesigns.github.io/MD_MAX72XX/page_hardware.html
- */
-
-/**
- \def USE_PAROLA_HW
- Set to 1 (default) to use the Parola hardware modules. The
- software was originally designed to operate with this hardware type.
- */
-//#define USE_PAROLA_HW 0
-
-/**
- \def USE_GENERIC_HW
- Set to 1 to use 'generic' hardware modules commonly available, with
- connectors at the top and bottom of the PCB, available from many sources.
- */
-#define USE_GENERIC_HW 0
-
-/**
- \def USE_ICSTATION_HW
- Set to 1 to use ICStation DIY hardware module kits available from
- http://www.icstation.com/product_info.php?products_id=2609#.UxqVJyxWGHs
- This hardware must be set up with the input on the RHS.
- */
-#define USE_ICSTATION_HW 0
-
-/**
- \def USE_FC16_HW
- Set to 1 to use FC16 hardware module kits.
- FC16 modules are similar in format to the ICStation modules but are wired differently.
- Modules are identified by a FC-16 designation on the PCB
-  */
-//#define USE_FC16_HW 1
-
-/**
- \def USE_OTHER_HW
- Set to 1 to use other hardware not defined above.
- Module 0 (Data In) must be set up on the RHS and the CUSTOM hardware defines
- must be set up in the MD_MAD72xx_lib.h file under for this section, using the HW_Mapper
- utility to work out what the correct values to use are.
- */
-#define USE_OTHER_HW 0
-
-//*******************************************************
-//* END SECTION - ADAPTING FOR DIFFERENT HARDWARE TYPES *
-//*******************************************************
-
 /**
 \mainpage Arduino LED Matrix Library
 The Maxim 72xx LED Controller IC
@@ -113,6 +58,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 \page pageRevisionHistory Revision History
 Revision History
 ----------------
+June 2018 version 3.0.0
+- Implemented new font file format (file format version 1).
+- Removed 'drawXXX' graphics functions to new MD_MAXPanel library.
+- Removed font indexing as this never used.
+- Added getFontHeight() method.
+- Module type now specified at run time.
+
 Apr 2018 version 2.11.1
 - Another attempt to further clarify editing of header file for hardware changes.
 
@@ -129,7 +81,7 @@ Nov 2017 version 2.10.0
 - Added MD_MAX72xx_Message_ESP8266 example
 - Minor source file cleanup
 - Added Extended ASCII font, vertical rotated font and RobotEyes font in fontbuilder
-- Modified fontbuilder output code for consistency with new code
+- Modified font builder output code for consistency with new code
 - Added getFont(), getMaxFontWidth() methods
 - Changed example - replaced MD_KeySwitch with new MD_UISwitch library
 
@@ -287,18 +239,6 @@ enough current for the number of connected modules.
  */
 #define USE_LOCAL_FONT 1
 
-/**
- \def USE_INDEX_FONT
- Set to 1 to enable font indexing to speed up font lookups - usually disabled.
- This will trade off increased stack RAM usage for lookup speed if enabled.
- When disabled lookups will then become linear searches through PROGMEM.
- Uses ASCII_INDEX_SIZE elements of uint16_t (512 bytes) if enabled. For most
- purposes the increase in speed is not needed.
-
- USE_LOCAL FONT must be enabled for this option to take effect.
- */
-#define USE_INDEX_FONT 0
-
 // Display parameter constants
 // Defined values that are used throughout the library to define physical limits
 #define ROW_SIZE  8   ///< The size in pixels of a row in the device LED matrix array
@@ -312,13 +252,28 @@ enough current for the number of connected modules.
 class MD_MAX72XX
 {
 public:
+  /**
+  * Module Type enumerated type.
+  *
+  * This enumerated type is used to defined the type of
+  * modules being used in the application. The types of modules are
+  * discussed in detail in the Hardware section of this documentation. 
+  */
+  enum moduleType_t
+  {
+    PAROLA_HW,    ///< Use the Parola style hardware modules.
+    GENERIC_HW,   ///< Use 'generic' style hardware modules commonly available.
+    ICSTATION_HW, ///< Use ICStation style hardware module.
+    FC16_HW       ///< Use FC-16 style hardware module.
+  };
+
 #if USE_LOCAL_FONT
   /**
   * Font definition type.
   *
   * This type is used in the setFont() method to set the font to be used
   */
-  typedef  const uint8_t	fontType_t;
+  typedef  const uint8_t fontType_t;
 #endif
 
   /**
@@ -376,6 +331,7 @@ public:
    * connect the software to the hardware. Multiple instances may co-exist
    * but they should not share the same hardware CS pin (SPI interface).
    *
+   * \param mod       module type used in this application. One of the moduleType_t values.
    * \param dataPin   output on the Arduino where data gets shifted out.
    * \param clkPin    output for the clock signal.
    * \param csPin     output for selecting the device.
@@ -383,7 +339,7 @@ public:
    *                    Memory for device buffers is dynamically allocated based
    *                    on this parameter.
    */
-  MD_MAX72XX(uint8_t dataPin, uint8_t clkPin, uint8_t csPin, uint8_t numDevices=1);
+  MD_MAX72XX(moduleType_t mod, uint8_t dataPin, uint8_t clkPin, uint8_t csPin, uint8_t numDevices=1);
 
   /**
    * Class Constructor - SPI hardware interface.
@@ -394,17 +350,18 @@ public:
    * The dataPin and the clockPin are defined by the Arduino hardware definition
    * (SPI MOSI and SCK signals).
    *
+   * \param mod     module type used in this application. One of the moduleType_t values.
    * \param csPin   output for selecting the device.
    * \param numDevices  number of devices connected. Default is 1 if not supplied.
    *                    Memory for device buffers is dynamically allocated based
    *                    on this parameter.
    */
-  MD_MAX72XX(uint8_t csPin, uint8_t numDevices=1);
+  MD_MAX72XX(moduleType_t mod, uint8_t csPin, uint8_t numDevices=1);
 
   /**
    * Initialize the object.
    *
-   * Initialize the object data. This needs to be called during setup() to initialize
+   * Initialize the object data. This needs to be called during setup() to initialize 
    * new data for the class that cannot be done during the object creation.
    *
    * The LED hardware is initialized to the middle intensity value, all rows showing,
@@ -482,6 +439,17 @@ public:
   uint16_t getColumnCount(void) { return(_maxDevices*COL_SIZE); };
 
   /**
+   * Set the type of hardware module being used.
+   *
+   * This method changes the type of module being used in the application 
+   * during at run time.
+   *
+   * \param mod module type used in this application; one of the moduleType_t values.
+   * \return No return data
+   */
+  void setModuleType(moduleType_t mod) { setModuleParameters(mod); };
+  
+  /**
    * Set the Shift Data In callback function.
    *
    * The callback function is called from the library when a transform shift left
@@ -546,72 +514,6 @@ public:
    * \return No return value.
    */
   void clear(uint8_t startDev, uint8_t endDev);
-
-  /**
-  * Draw a horizontal line between two points on the display
-  *
-  * Draw a horizontal line between the specified points. The LED will be turned on or
-  * off depending on the value supplied. The column number will be dereferenced
-  * into the device and column within the device, allowing the LEDs to be treated
-  * as a continuous pixel field.
-  *
-  * \param r     row coordinate for the line [0..ROW_SIZE-1].
-  * \param c1    starting column coordinate for the point [0..getColumnCount()-1].
-  * \param c2    ending column coordinate for the point [0..getColumnCount())-1].
-  * \param state true - switch on; false - switch off.
-  * \return false if parameter errors, true otherwise.
-  */
-  bool drawHLine(uint8_t r, uint16_t c1, uint16_t c2, bool state);
-
-  /**
-   * Draw an arbitrary line between two points on the display
-   *
-   * Draw a line between the specified points using Bresenham's algorithm.
-   * The LED will be turned on or off depending on the value supplied. The
-   * column number will be dereferenced into the device and column within
-   * the device, allowing the LEDs to be treated as a continuous pixel field.
-   *
-   * \param r1    starting row coordinate for the point [0..ROW_SIZE-1].
-   * \param c1    starting column coordinate for the point [0..getColumnCount()-1].
-   * \param r2    ending row coordinate for the point [0..ROW_SIZE-1].
-   * \param c2    ending column coordinate for the point [0..getColumnCount())-1].
-   * \param state true - switch on; false - switch off.
-   * \return false if parameter errors, true otherwise.
-   */
-  bool drawLine(uint8_t r1, uint16_t c1, uint8_t r2, uint16_t c2, bool state);
-
-  /**
-  * Draw a vertical line between two points on the display
-  *
-  * Draw a horizontal line between the specified points. The LED will be turned on or
-  * off depending on the value supplied. The column number will be dereferenced
-  * into the device and column within the device, allowing the LEDs to be treated
-  * as a continuous pixel field.
-  *
-  * \param c     column coordinate for the line [0..getColumnCount())-1].
-  * \param r1    starting row coordinate for the point [0..ROW_SIZE-1].
-  * \param r2    ending row coordinate for the point [0..ROW_SIZE-1].
-  * \param state true - switch on; false - switch off.
-  * \return false if parameter errors, true otherwise.
-  */
-  bool drawVLine(uint16_t c, uint8_t r1, uint8_t r2, bool state);
-
-  /**
-  * Draw a rectangle given two diagonal vertices
-  *
-  * Draw a rectangle given the points across the diagonal. The LED will be turned on or
-  * off depending on the value supplied. The column number will be dereferenced
-  * into the device and column within the device, allowing the LEDs to be treated
-  * as a continuous pixel field.
-  *
-  * \param r1    starting row coordinate for the point [0..ROW_SIZE-1].
-  * \param c1    starting column coordinate for the point [0..getColumnCount()-1].
-  * \param r2    ending row coordinate for the point [0..ROW_SIZE-1].
-  * \param c2    ending column coordinate for the point [0..getColumnCount())-1].
-  * \param state true - switch on; false - switch off.
-  * \return false if parameter errors, true otherwise.
-  */
-  bool drawRectangle(uint8_t r1, uint16_t c1, uint8_t r2, uint16_t c2, bool state);
 
   /**
    * Load a bitmap from the display buffers to a user buffer.
@@ -939,10 +841,7 @@ public:
    * the nominated font (default or user defined). To specify a user defined
    * character set, pass the PROGMEM address of the font table. Passing a nullptr
    * resets the font table to the library default table.
-   *
-   * This function also causes the font index table to be recreated if the
-   * library defined value USE_INDEX_TABLE is set to 1.
-   *
+   * 
    * NOTE: This function is only available if the library defined value
    * USE_LOCAL_FONT is set to 1.
    *
@@ -955,7 +854,7 @@ public:
   * Get the maximum width character for the font.
   *
   * Returns the number of columns for the widest character in the currently
-  * selected font table. Useful to allocated buffers of the right size before
+  * selected font table. Useful to allocated buffers of the right size before 
   * loading characters from the font table.
   *
   * NOTE: This function is only available if the library defined value
@@ -963,12 +862,25 @@ public:
   *
   * \return number of columns (width) for the widest character.
   */
-  uint8_t getMaxFontWidth(void);
+  uint8_t getMaxFontWidth(void) { return(_fontInfo.widthMax); };
+
+  /**
+  * Get height of a character for the font.
+  *
+  * Returns the number of rows specified as the height of a character in the 
+  * currently selected font table.
+  *
+  * NOTE: This function is only available if the library defined value
+  * USE_LOCAL_FONT is set to 1.
+  *
+  * \return number of rows (height) for the font.
+  */
+  uint8_t getFontHeight(void) { return(_fontInfo.height); };
 
   /**
    * Get the pointer to current font table.
    *
-   * Returns the pointer to the current font table. Useful if user code needs
+   * Returns the pointer to the current font table. Useful if user code needs 
    * to replace the current font temporarily and then restore previous font.
    *
    * NOTE: This function is only available if the library defined value
@@ -986,6 +898,12 @@ private:
   uint8_t dig[ROW_SIZE];  // data for each digit of the MAX72xx (DIG0-DIG7)
   uint8_t changed;        // one bit for each digit changed ('dirty bit')
   } deviceInfo_t;
+
+  // LED module wiring parameters defined by hardware type
+  moduleType_t _mod;  // The module type from the available list
+  bool _hwDigRows;    // MAX72xx digits are mapped to rows in on the matrix
+  bool _hwRevCols;    // Normal orientation is col 0 on the right. Set to true if reversed
+  bool _hwRevRows;    // Normal orientation is row 0 at the top. Set to true if reversed
 
   // SPI interface data
   uint8_t _dataPin;     // DATA is shifted out of this pin ...
@@ -1007,12 +925,25 @@ private:
   bool    _wrapAround;    // when shifting, wrap left to right and vice versa (circular buffer)
 
 #if USE_LOCAL_FONT
+  // Font properties info structure
+   typedef struct
+   {
+     uint8_t version;     // (v1) font definition version number (for compliance)
+     uint8_t height;      // (v1) font height in pixels
+     uint8_t widthMax;    // (v1) font maximum width in pixels (widest character)
+     uint8_t firstASCII;  // (v1) the first ASCII character in the font table
+     uint8_t lastASCII;   // (v1) the last ASCII character in the font table
+     uint16_t dataOffset; // (v1) offset from the start of table to first character definition
+   } fontInfo_t;
+
   // Font related data
   fontType_t  *_fontData;   // pointer to the current font data being used
-  uint16_t    *_fontIndex;  // font index for faster access to font table offsets
+  fontInfo_t  _fontInfo;    // properties of the current font table
 
-  uint16_t  getFontCharOffset(uint8_t c); // find the character in the font data
-  void      buildFontIndex(void);         // build a font index
+  void    setFontInfoDefault(void);     // set the default parameters for the font info file
+  void    loadFontInfo(void);           // load the font info block from the font data
+  uint8_t getFontWidth(void);           // get the maximum font width by inspecting the font table
+  int16_t getFontCharOffset(uint8_t c); // find the character in the font data. If not there, return -1
 #endif
 
   // Private functions
@@ -1029,6 +960,17 @@ private:
 
   bool copyRow(uint8_t buf, uint8_t rSrc, uint8_t rDest);   // copy a row from Src to Dest
   bool copyColumn(uint8_t buf, uint8_t cSrc, uint8_t cDest);// copy a row from Src to Dest
+
+  void setModuleParameters(moduleType_t mod);   // setup parameters based on module type
+
+  // _hwDigRev switched function for internal use
+  bool copyC(uint8_t buf, uint8_t cSrc, uint8_t cDest);
+  bool copyR(uint8_t buf, uint8_t rSrc, uint8_t rDest);
+  uint8_t getC(uint8_t buf, uint8_t c);
+  uint8_t getR(uint8_t buf, uint8_t r);
+  bool setC(uint8_t buf, uint8_t c, uint8_t value);
+  bool setR(uint8_t buf, uint8_t r, uint8_t value);
+
 };
 
 #endif

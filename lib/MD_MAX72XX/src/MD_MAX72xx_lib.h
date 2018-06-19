@@ -6,11 +6,6 @@ See header file for comments
 This file contains library related definitions and is not visible
 to user code.
 
-****************************************************************
-* PLEASE MAKE ALL ADJUSTMENTS FOR THE HARDWARE USING THE MAIN  *
-* LIBRARY HEADER FILE. THIS FILE SHOULD NOT BE CHANGED.        *
-****************************************************************
-
 Copyright (C) 2012-14 Marco Colli. All rights reserved.
 
 This library is free software; you can redistribute it and/or
@@ -69,7 +64,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 #define ALL_CHANGED   0xff    ///< Mask for all rows changed in a buffer structure
 #define ALL_CLEAR     0x00    ///< Mask for all rows clear in a buffer structure
 
-#define ASCII_INDEX_SIZE  256 ///< Number of characters in a font table (ASCII maximum)
+#define FONT_FILE_INDICATOR 'F' ///< Font table indicator prefix for info header
 
 // Shortcuts
 #define SPI_DATA_SIZE (sizeof(uint8_t)*_maxDevices*2)   ///< Size of the SPI data buffers
@@ -77,6 +72,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 #define FIRST_BUFFER 0                 ///< First buffer number
 #define LAST_BUFFER  (_maxDevices-1)   ///< Last buffer number
+
+// Macros to map reversed ROW and COLUMN coordinates
+#define HW_ROW(r) (_hwRevRows ? (ROW_SIZE - 1 - (r)) : (r)) ///< Pixel to hardware coordinate row mapping
+#define HW_COL(c) (_hwRevCols ? (COL_SIZE - 1 - (c)) : (c)) ///< Pixel to hardware coordinate column mapping
 
 // variables shared in the library
 extern const uint8_t PROGMEM _sysfont_var[];  ///< System variable pitch font table
@@ -88,7 +87,7 @@ Supported Hardware
 This library supports the Parola hardware and the more commonly available LED modules available
 from many other sources. The circuits for these modules are essentially identical except
 in the way that the LED matrix is wired to the MAX7219 IC. This difference is accounted for in
-software when the type of module is selected using the appropriate USE_*_HW compile time switch.
+software when the type of module is selected using the appropriate moduleType_t enumerated type.
 
 Hardware supported
 ------------------
@@ -329,17 +328,8 @@ are limited to combinations (8 in total) of
 - a reversal of row indices, and
 - a reversal of column indices.
 
-The hardware types defined in MD_MAX72xx.h activate different library code by defining
-appropriate values for the defines listed below, in the MD_MAX72xx_lib.h file.
-
-- HW_DIG_ROWS - MAX72xx digits are mapped to rows in on the matrix. If digits are
-not rows then they are columns!
-
-- HW_REV_COLS - Normal column coordinates orientation is 0 col on the right side
-of the display. Set to 1 to reverse this (0 on the left).
-
-- HW_REV_ROWS - Normal row coordinates orientation is 0 row at top of the display.
-Set to 1 to reverse this (0 at the bottom).
+The hardware types defined in MD_MAX72xx.h activate different library code by setting 
+the parameters that specify the correct way to handle these differences.
 
 Determining the type of mapping
 -------------------------------
@@ -368,18 +358,15 @@ The result of these observations is a grid definition that looks somewhat like:
     Seg DP
 
 From this mapping it is clear
-- MAX72xx digits map to the columns, HW_DIG_ROWS is 0.
-- DIG0 is on the left (columns were also scanned left to right), so HW_REV_COLS should be set
-  to 1 to reverse it to the standard 0 on the right.
-- Seg G is at the top (rows were also top to bottom), so HW_REV_ROWS should be set to 0,
-  as it is already standard with 0 on top.
+- MAX72xx digits map to the columns.
+- DIG0 is on the left (columns were also scanned left to right).
+- Seg G is at the top (rows were also top to bottom).
 
 Note that in some situations using the module 'upside down' will result in a better configuration
 than would otherwise be the case. An example of this is the generic module mapping. Also remember
 that the modules are daisy chained from right to left.
 
-Having determined the values for the defines, the new mapping can be configured, or matched to
-an existing hardware type.
+Having determined the values for the module type, this can be used in the application.
 ___
 
 \page pageFontUtility Create and Modify Fonts
@@ -391,10 +378,19 @@ can be specified to the library. The font builder utilities provide a convenient
 modify existing or develop alternative fonts.
 
 Fonts are stored as a series of contiguous bytes in the following format:
-- byte 1 - the number of bytes that form this character (could be zero)
-- byte 2..n - each byte is a column of the character to be formed, starting with the
+- byte 1 - the character 'F'
+- byte 2 - the version for the file format (1 or more)
+- byte 3 - the first ASCII character in the table
+- byte 4 - the last ASCII character in the table
+- byte 5 - the height of the character in pixels
+- byte 6 - the number of bytes that form this character (could be zero)
+- byte 7..n - each byte is a column of the character to be formed, starting with the
 leftmost column of the character. The least significant bit of the byte is the bottom
 pixel position of the character matrix (row 7).
+
+If the 'F' is omitted then the font definition is considered a version 0 font (prior to
+MD_MAX72xx version 3.0.0) and the defaults are set to min ASCII 0, max ASCII 255, height 8. 
+In this case byte 6 above is the first byte in the file.
 
 To find a character in the font table, the library looks at the first byte (size),
 skips 'size'+1 bytes to the next character size byte and repeat until the last or
@@ -476,63 +472,5 @@ As FontBuilder requires using Microsoft Office products, it does not work enviro
 these are not available.
 
 */
-
-// *******************************************************************************************
-// ** Combinations not listed here have probably not been tested and may not work correctly **
-// **                                                                                       **
-// ** NOTE: in nearly all cases, the user should not be changing these combinations but     **
-// **       modifying the hardware type definitions in the MD_MAX72xx.h library header file.**
-// *******************************************************************************************
-#if USE_PAROLA_HW   // tested MC 8 March 2014
-//#pragma message "PAROLA HW selected"
-#define HW_DIG_ROWS 1 ///< MAX72xx digits are mapped to rows in on the matrix
-#define HW_REV_COLS 1 ///< Normal orientation is col 0 on the right. Set to 1 if reversed
-#define HW_REV_ROWS 0 ///< Normal orientation is row 0 at the top. Set to 1 if reversed
-#endif
-
-#if USE_GENERIC_HW  // tested MC 9 March 2014
-//#pragma message "GENERIC HW selected"
-#define HW_DIG_ROWS 0 ///< MAX72xx digits are mapped to rows in on the matrix
-#define HW_REV_COLS 1 ///< Normal orientation is col 0 on the right. Set to 1 if reversed
-#define HW_REV_ROWS 0 ///< Normal orientation is row 0 at the top. Set to 1 if reversed
-#endif
-
-#if USE_ICSTATION_HW  // tested MC 9 March 2014
-//#pragma message "ICSTATION HW selected"
-#define HW_DIG_ROWS 1 ///< MAX72xx digits are mapped to rows in on the matrix
-#define HW_REV_COLS 1 ///< Normal orientation is col 0 on the right. Set to 1 if reversed
-#define HW_REV_ROWS 1 ///< Normal orientation is row 0 at the top. Set to 1 if reversed
-#endif
-
-#if USE_FC16_HW       // tested MC 23 Feb 2015
-//#pragma message "FC16 HW selected"
-#define HW_DIG_ROWS 1 ///< MAX72xx digits are mapped to rows in on the matrix
-#define HW_REV_COLS 0 ///< Normal orientation is col 0 on the right. Set to 1 if reversed
-#define HW_REV_ROWS 0 ///< Normal orientation is row 0 at the top. Set to 1 if reversed
-#endif
-
-#if USE_OTHER_HW      // user defined custom hardware configuration
-//#pragma message "OTHER HW selected"
-#define HW_DIG_ROWS 0 ///< MAX72xx digits are mapped to rows in on the matrix
-#define HW_REV_COLS 0 ///< Normal orientation is col 0 on the right. Set to 1 if reversed
-#define HW_REV_ROWS 0 ///< Normal orientation is row 0 at the top. Set to 1 if reversed
-#endif
-
-#ifndef HW_DIG_ROWS
-#error "INVALID or missing hardware selected"
-#endif
-
-// Macros to map ROW and COLUMN coordinates
-#if HW_REV_ROWS
-#define HW_ROW(r) (7-r) ///< Pixel to hardware coordinate row mapping
-#else
-#define HW_ROW(r) (r)   ///< Pixel to hardware coordinate row mapping
-#endif
-
-#if HW_REV_COLS
-#define HW_COL(c) (7-c) ///< Pixel to hardware coordinate column mapping
-#else
-#define HW_COL(c) (c)   ///< Pixel to hardware coordinate column mapping
-#endif
 
 #endif

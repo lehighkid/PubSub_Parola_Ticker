@@ -4,14 +4,15 @@
   Multiple example sketchs and code leveraged by
   Aaron Drago (lehighkid@gmail.com) for use in AutoRunHome
 */
-
+#include <Arduino.h>
+#include "config.h"
+#include "main.h"
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>
-#include "config.h"
 
 // Define wifi client for use in PubSubClient for MQTT
 WiFiClientSecure espClient;
@@ -20,7 +21,7 @@ PubSubClient client(mqtt_server, mqtt_port, espClient);
 
 // Define hardware SPI connection for Parola
 // TODO: Add options to config for HW vs. SW and update definition here
-MD_Parola P = MD_Parola(pin_CS, parola_max_devices);
+MD_Parola P = MD_Parola(HARDWARE_TYPE, pin_CS, parola_max_devices);
 
 // Create mqtt message queue for processing
 Queue<mqttMessage> mqttMessageQueue(mqtt_msg_queue_max_limit);
@@ -34,17 +35,13 @@ void wifi_connect()
   // We start by connecting to a WiFi network
   WiFi.mode(WIFI_STA);
   WiFi.begin(wifi_ssid, wifi_password);
-
-  DPRINTLN();
-  DPRINTLN();
-  DPRINT("Wait for WiFi... ");
+  DPRINT("\nWait for WiFi... ");
 
   while (WiFi.status() != WL_CONNECTED) {
     DPRINT(".");
     delay(wifi_recon_time);
   }
-  DPRINTLN("");
-  DPRINTLN("WiFi connected");
+  DPRINTLN("\nWiFi connected");
   DPRINTLN("IP address: ");
   DPRINTLN(WiFi.localIP());
 
@@ -85,6 +82,25 @@ void toggle_pin(int pin, int duration, int intervals)
    delay(duration);
   }
   digitalWrite(pin, orig_state);
+}
+
+// Set up topics for subscription
+void mqtt_subscribe()
+{
+  // Loop through of configured subscriptions
+  for (unsigned int c = 0; c < (sizeof(channels)/sizeof(int)); c++){
+    // Construct topic string for subscription
+    sprintf(mqtt_endpoint_subscribe, "%s/%08X/%s", mqtt_endpoint, controller_id, channels[c]);
+    // Subscribe to individual topic & check response
+    if(!client.subscribe(mqtt_endpoint_subscribe))
+    {
+      DPRINTLN("Subscribe unsuccessful");
+      // Subscribe failed - disconnect and exit
+      client.disconnect();
+      return;
+    };
+    DPRINTLN(mqtt_endpoint_subscribe);
+  }
 }
 
 // [Re]Connect to MQTT Broker then subscribe to topics
@@ -129,25 +145,6 @@ void mqtt_connect()
   }
 }
 
-// Set up topics for subscription
-void mqtt_subscribe()
-{
-  // Loop through of configured subscriptions
-  for (unsigned int c = 0; c < (sizeof(channels)/sizeof(int)); c++){
-    // Construct topic string for subscription
-    sprintf(mqtt_endpoint_subscribe, "%s/%08X/%s", mqtt_endpoint, controller_id, channels[c]);
-    // Subscribe to individual topic & check response
-    if(!client.subscribe(mqtt_endpoint_subscribe))
-    {
-      DPRINTLN("Subscribe unsuccessful");
-      // Subscribe failed - disconnect and exit
-      client.disconnect();
-      return;
-    };
-    DPRINTLN(mqtt_endpoint_subscribe);
-  }
-}
-
 String convertPayloadToString(byte* payload, unsigned int length)
 {
   payload[length]     = null_str;   // add null string terminator for String conversion
@@ -169,7 +166,7 @@ message convertmqttMessageToMessage(mqttMessage mqtt_msg)
   // Test if parsing succeeds
   if (payRoot.success())
   {
-    long endTick = millis() + (long)payRoot["duration"];
+    unsigned long endTick = millis() + (long)payRoot["duration"];
 
     return message {
       strdup(payRoot["messageId"]),

@@ -10,13 +10,14 @@
 #include <MD_MAX72xx.h>
 #include <SPI.h>
 
-#define	PRINT(s, v)	{ Serial.print(F(s)); Serial.print(v); }
+#define PRINT(s, v) { Serial.print(F(s)); Serial.print(v); }
 
-#define	BUF_SIZE	    75  // text buffer size
-#define	CHAR_SPACING	1   // pixels between characters
+#define BUF_SIZE      75  // text buffer size
+#define CHAR_SPACING  1   // pixels between characters
 
 // Define the number of devices we have in the chain and the hardware interface
-#define	MAX_DEVICES	4
+#define HARDWARE_TYPE MD_MAX72XX::PAROLA_HW
+#define MAX_DEVICES 4
 
 struct LineDefinition
 {
@@ -30,8 +31,8 @@ struct LineDefinition
 // need to be adapted
 struct LineDefinition  Line[] =
 {
-  { MD_MAX72XX(11, 13, 10, MAX_DEVICES), "abc", true },
-  { MD_MAX72XX(11, 13,  9, MAX_DEVICES), "def", true }
+  { MD_MAX72XX(HARDWARE_TYPE, 11, 13, 10, MAX_DEVICES), "abc", true },
+  { MD_MAX72XX(HARDWARE_TYPE, 11, 13,  9, MAX_DEVICES), "def", true }
 };
 
 #define MAX_LINES   (sizeof(Line)/sizeof(LineDefinition))
@@ -84,7 +85,7 @@ void printText(uint8_t lineID, uint8_t modStart, uint8_t modEnd, char *pMsg)
   {
     switch(state)
     {
-      case 0:	// Load the next character from the font table
+      case 0: // Load the next character from the font table
         // if we reached end of message, reset the message pointer
         if (*pMsg == '\0')
         {
@@ -99,7 +100,7 @@ void printText(uint8_t lineID, uint8_t modStart, uint8_t modEnd, char *pMsg)
         state++;
         // !! deliberately fall through to next state to start displaying
 
-      case 1:	// display the next part of the character
+      case 1: // display the next part of the character
         Line[lineID].mx.setColumn(col--, cBuf[curLen++]);
 
         // done with font character, now display the space between chars
@@ -115,7 +116,7 @@ void printText(uint8_t lineID, uint8_t modStart, uint8_t modEnd, char *pMsg)
         state++;
         // fall through
 
-      case 3:	// display inter-character spacing or end of message padding (blank columns)
+      case 3: // display inter-character spacing or end of message padding (blank columns)
         Line[lineID].mx.setColumn(col--, 0);
         curLen++;
         if (curLen == showLen)

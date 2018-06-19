@@ -4,20 +4,20 @@
 #include <MD_MAX72xx.h>
 #include <SPI.h>
 
-#define	DEBUG	0		// Enable or disable (default) debugging output
+#define DEBUG 0   // Enable or disable (default) debugging output
 
 #if DEBUG
-#define	PRINT(s, v)		{ Serial.print(F(s)); Serial.print(v); }		  // Print a string followed by a value (decimal)
-#define	PRINTX(s, v)	{ Serial.print(F(s)); Serial.print(v, HEX); }	// Print a string followed by a value (hex)
-#define	PRINTB(s, v)	{ Serial.print(F(s)); Serial.print(v, BIN); }	// Print a string followed by a value (binary)
-#define PRINTC(s, v)  { Serial.print(F(s)); Serial.print((char)v); }	// Print a string followed by a value (char)
-#define	PRINTS(s)		  { Serial.print(F(s)); }							          // Print a string
+#define PRINT(s, v)   { Serial.print(F(s)); Serial.print(v); }      // Print a string followed by a value (decimal)
+#define PRINTX(s, v)  { Serial.print(F(s)); Serial.print(v, HEX); } // Print a string followed by a value (hex)
+#define PRINTB(s, v)  { Serial.print(F(s)); Serial.print(v, BIN); } // Print a string followed by a value (binary)
+#define PRINTC(s, v)  { Serial.print(F(s)); Serial.print((char)v); }  // Print a string followed by a value (char)
+#define PRINTS(s)     { Serial.print(F(s)); }                       // Print a string
 #else
-#define	PRINT(s, v)		// Print a string followed by a value (decimal)
-#define	PRINTX(s, v)	// Print a string followed by a value (hex)
-#define	PRINTB(s, v)	// Print a string followed by a value (binary)
+#define PRINT(s, v)   // Print a string followed by a value (decimal)
+#define PRINTX(s, v)  // Print a string followed by a value (hex)
+#define PRINTB(s, v)  // Print a string followed by a value (binary)
 #define PRINTC(s, v)  // Print a string followed by a value (char)
-#define	PRINTS(s)		  // Print a string
+#define PRINTS(s)     // Print a string
 #endif
 
 // --------------------
@@ -26,13 +26,14 @@
 // NOTE: These pin numbers will probably not work with your hardware and may
 // need to be adapted
 //
-#define	MAX_DEVICES	12
-#define	CLK_PIN		13  // or SCK
-#define	DATA_PIN	11  // or MOSI
-#define	CS_PIN		10  // or SS
+#define HARDWARE_TYPE MD_MAX72XX::PAROLA_HW
+#define MAX_DEVICES 12
+#define CLK_PIN   13  // or SCK
+#define DATA_PIN  11  // or MOSI
+#define CS_PIN    10  // or SS
 
-MD_MAX72XX mx = MD_MAX72XX(CS_PIN, MAX_DEVICES);                      // SPI hardware interface
-//MD_MAX72XX mx = MD_MAX72XX(DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES); // Arbitrary pins
+MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);                      // SPI hardware interface
+//MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES); // Arbitrary pins
 
 // --------------------
 // Constant parameters
@@ -83,11 +84,11 @@ void loop(void)
   // Is it time to animate?
   if (millis()-prevTimeAnim < ANIMATION_DELAY)
     return;
-  prevTimeAnim = millis();			// starting point for next time
+  prevTimeAnim = millis();      // starting point for next time
 
   mx.control(MD_MAX72XX::UPDATE, MD_MAX72XX::OFF);
 
-  // Initialise
+  // Initialize
   if (bInit)
   {
     mx.clear();

@@ -16,6 +16,7 @@ int                   pin_CLK                       = CLK_PIN;
 int                   pin_DATA                      = DATA_PIN;
 int                   pin_CS                        = CS_PIN;
 
+
 // MQTT connection details
 int                   mqtt_port                     = 8883;
 const char*           mqtt_server                   = "acdrago.com";
@@ -49,8 +50,8 @@ const char*           mqtt_topic_info               = "info";
 const char*           channels[]                    = {mqtt_topic_msg, mqtt_topic_rst, mqtt_topic_info};
 
 // MQTT message commands & responses
-const char*           mqtt_msg_succ                 = "0";
-const char*           mqtt_msg_fail                 = "-1";
+//const char*           mqtt_msg_succ                 = "0";
+//const char*           mqtt_msg_fail                 = "-1";
 const char*           mqtt_msg_ins                  = "INSERT";
 const char*           mqtt_msg_upd                  = "UPDATE";
 const char*           mqtt_msg_ups                  = "UPSERT";
@@ -101,7 +102,7 @@ typedef struct
   int           entryEffect;
   int           exitEffect;
   const char*   displayType;
-  long          endTick;
+  unsigned long endTick;
   int           runCount;
   int           timesRun;
   const char*   msgAction;

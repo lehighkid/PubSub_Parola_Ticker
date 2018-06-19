@@ -2,18 +2,18 @@
 //
 // Uses most of the functions in the library
 #include <MD_MAX72xx.h>
-#include <SPI.h>
+//#include <SPI.h>
 
 // Turn on debug statements to the serial output
 #define  DEBUG  1
 
 #if  DEBUG
-#define	PRINT(s, x)	{ Serial.print(F(s)); Serial.print(x); }
-#define	PRINTS(x)	Serial.print(F(x))
-#define	PRINTD(x)	Serial.println(x, DEC)
+#define PRINT(s, x) { Serial.print(F(s)); Serial.print(x); }
+#define PRINTS(x) Serial.print(F(x))
+#define PRINTD(x) Serial.println(x, DEC)
 
 #else
-#define	PRINT(s, x)
+#define PRINT(s, x)
 #define PRINTS(x)
 #define PRINTD(x)
 
@@ -22,33 +22,34 @@
 // Define the number of devices we have in the chain and the hardware interface
 // NOTE: These pin numbers will probably not work with your hardware and may
 // need to be adapted
-#define	MAX_DEVICES	11
+#define HARDWARE_TYPE MD_MAX72XX::PAROLA_HW
+#define MAX_DEVICES	11
 
-#define	CLK_PIN		13  // or SCK
-#define	DATA_PIN	11  // or MOSI
-#define	CS_PIN		10  // or SS
+#define CLK_PIN   13  // or SCK
+#define DATA_PIN  11  // or MOSI
+#define CS_PIN    10  // or SS
 
 // SPI hardware interface
-MD_MAX72XX mx = MD_MAX72XX(CS_PIN, MAX_DEVICES);
+MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 // Arbitrary pins
-// MD_MAX72XX mx = MD_MAX72XX(DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
+// MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 
 // We always wait a bit between updates of the display
 #define  DELAYTIME  100  // in milliseconds
 
 void scrollText(char *p)
 {
-  uint8_t	charWidth;
-  uint8_t	cBuf[8];	// this should be ok for all built-in fonts
+  uint8_t charWidth;
+  uint8_t cBuf[8];  // this should be ok for all built-in fonts
 
   PRINTS("\nScrolling text");
   mx.clear();
 
   while (*p != '\0')
   {
-    charWidth = mx.getChar(*p++, sizeof(cBuf)/sizeof(cBuf[0]), cBuf);
+    charWidth = mx.getChar(*p++, sizeof(cBuf) / sizeof(cBuf[0]), cBuf);
 
-    for (uint8_t i=0; i<charWidth + 1; i++)	// allow space between characters
+    for (uint8_t i=0; i<=charWidth; i++)	// allow space between characters
     {
       mx.transform(MD_MAX72XX::TSL);
       if (i < charWidth)
@@ -79,69 +80,6 @@ void zeroPointSet()
   delay(DELAYTIME*3);
 }
 
-void lines()
-// Demonstrate the use of drawLine().
-// fan out lines from each corner for up to 4 device blocks
-{
-  PRINTS("\nLines");
-  const uint8_t stepSize = 3;
-  const uint8_t maxDev = (MAX_DEVICES > 4 ? 4 : MAX_DEVICES);
-
-  mx.clear();
-  for (uint16_t c=0; c<(maxDev*COL_SIZE)-1; c+=stepSize)
-  {
-    mx.drawLine(0, 0, ROW_SIZE-1, c, true);
-    delay(DELAYTIME);
-  }
-
-  mx.clear();
-  for (uint16_t c=0; c<(maxDev*COL_SIZE)-1; c+=stepSize)
-  {
-    mx.drawLine(ROW_SIZE-1, 0, 0, c, true);
-    delay(DELAYTIME);
-  }
-
-  mx.clear();
-  for (uint16_t c=0; c<(maxDev*COL_SIZE)-1; c+=stepSize)
-  {
-    mx.drawLine(ROW_SIZE-1, (MAX_DEVICES*COL_SIZE)-1, 0, (MAX_DEVICES*COL_SIZE)-1-c, true);
-    delay(DELAYTIME);
-  }
-
-  mx.clear();
-  for (uint16_t c=0; c<(maxDev*COL_SIZE)-1; c+=stepSize)
-  {
-    mx.drawLine(0, (MAX_DEVICES*COL_SIZE)-1, ROW_SIZE-1, (MAX_DEVICES*COL_SIZE)-1-c, true);
-    delay(DELAYTIME);
-  }
-}
-
-void hLines()
-// Demonstrate the use of drawHLine().
-{
-  PRINTS("\nHorizontal Lines");
-
-  mx.clear();
-  for (uint8_t r = 0; r < ROW_SIZE; r++)
-  {
-    mx.drawHLine(r, r, mx.getColumnCount() - ROW_SIZE + r, true);
-    delay(2*DELAYTIME);
-  }
-}
-
-void vLines()
-// Demonstrate the use of drawHLine().
-{
-  PRINTS("\nVertical Lines");
-
-  mx.clear();
-  for (uint16_t c = 0; c < mx.getColumnCount(); c++)
-  {
-    mx.drawVLine(c, 0, c % ROW_SIZE, true);
-    delay(DELAYTIME/4);
-  }
-}
-
 void rows()
 // Demonstrates the use of setRow()
 {
@@ -156,25 +94,29 @@ void rows()
   }
 }
 
-void rectangles()
+void checkboard()
 // nested rectangles spanning the entire display
 {
-  PRINTS("\nRectangles");
+  uint8_t chkCols[][2] = { { 0x55, 0xaa }, { 0x33, 0xcc }, { 0x0f, 0xf0 }, { 0xff, 0x00 } };
+
+  PRINTS("\nCheckboard");
   mx.clear();
 
-  for (uint8_t i = 0; i < 4; i++)
+  for (uint8_t pattern = 0; pattern < sizeof(chkCols)/sizeof(chkCols[0]); pattern++)
   {
-    for (uint8_t r = 0; r < ROW_SIZE / 2; r++)
+    uint8_t col = 0;
+    uint8_t idx = 0;
+    uint8_t rep = 1 << pattern;
+
+    while (col < mx.getColumnCount())
     {
-      mx.drawRectangle(r, r, ROW_SIZE - 1 - r, mx.getColumnCount() - 1 - r, true);
-      delay(2 * DELAYTIME);
+      for (uint8_t r = 0; r < rep; r++)
+        mx.setColumn(col++, chkCols[pattern][idx]);   // use odd/even column masks
+      idx++;
+      if (idx > 1) idx = 0;
     }
 
-    for (uint8_t r = 0; r < ROW_SIZE / 2; r++)
-    {
-      mx.drawRectangle(r, r, ROW_SIZE - 1 - r, mx.getColumnCount() - 1 - r, false);
-      delay(2 * DELAYTIME);
-    }
+    delay(10 * DELAYTIME);
   }
 }
 
@@ -209,7 +151,7 @@ void cross()
       mx.setRow(j, i, 0xff);
     }
     mx.update();
-    delay(3*DELAYTIME);
+    delay(DELAYTIME);
     for (uint8_t j=0; j<MAX_DEVICES; j++)
     {
       mx.setColumn(j, i, 0x00);
@@ -226,7 +168,7 @@ void cross()
       mx.setRow(j, ROW_SIZE-1, 0xff);
     }
     mx.update();
-    delay(3*DELAYTIME);
+    delay(DELAYTIME);
     for (uint8_t j=0; j<MAX_DEVICES; j++)
     {
       mx.setColumn(j, i, 0x00);
@@ -243,7 +185,7 @@ void cross()
       mx.setRow(j, ROW_SIZE-1-i, 0xff);
     }
     mx.update();
-    delay(3*DELAYTIME);
+    delay(DELAYTIME);
     for (uint8_t j=0; j<MAX_DEVICES; j++)
     {
       mx.setColumn(j, i, 0x00);
@@ -652,36 +594,33 @@ void setup()
 void loop()
 {
 #if 1
-//  scrollText("Graphics  ");
+  scrollText("Graphics");
   zeroPointSet();
-  lines();
-  hLines();
   rows();
-  vLines();
   columns();
-  rectangles();
   cross();
   stripe();
+  checkboard();
   bullseye();
   bounce();
   spiral();
 #endif
 
 #if 1
-  scrollText("Control  ");
+  scrollText("Control");
   intensity();
   scanLimit();
   blinking();
 #endif
 
 #if 1
-  scrollText("Transform  ");
+  scrollText("Transform");
   transformation1();
   transformation2();
 #endif
 
 #if 1
-  scrollText("Charset  ");
+  scrollText("Charset");
   wrapText();
   showCharset();
 #endif

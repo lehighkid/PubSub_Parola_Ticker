@@ -73,99 +73,9 @@ bool MD_MAX72XX::setBuffer(uint16_t col, uint8_t size, uint8_t *pd)
   return(true);
 }
 
-bool MD_MAX72XX::drawHLine(uint8_t r, uint16_t c1, uint16_t c2, bool state)
-// draw a horizontal line at row r between columns c1 and c2 inclusive
-{
-  if (r >= ROW_SIZE || c1 >= getColumnCount() || c2 >= getColumnCount())
-    return(false);
-
-  if (c1 > c2)      // swap c1/c2
-  {
-    uint16_t  t = c1;
-    c1 = c2;
-    c2 = t;
-  }
-
-  for (uint16_t i = c1; i <= c2; i++)
-    setPoint(r, i, state);
-}
-
-bool MD_MAX72XX::drawVLine(uint16_t c, uint8_t r1, uint8_t r2, bool state)
-// draw a vertical line at column c between rows r1 and r2 inclusive
-{
-  if (r1 >= ROW_SIZE || r2 >= ROW_SIZE || c >= getColumnCount())
-    return(false);
-
-  if (r1 > r2)      // swap r1/r2
-  {
-    uint8_t  t = r1;
-    r1 = r2;    
-    r2 = t;
-  }
-
-  for (uint8_t i = r1; i <= r2; i++)
-    setPoint(i, c, state);
-}
-
-bool MD_MAX72XX::drawRectangle(uint8_t r1, uint16_t c1, uint8_t r2, uint16_t c2, bool state)
-// draw a rectangle given the 2 diagonal vertices
-{
-  if (r1 >= ROW_SIZE || r2 >= ROW_SIZE || c1 >= getColumnCount() || c2 >= getColumnCount())
-    return(false);
-
-  drawHLine(r1, c1, c2, state);
-  drawHLine(r2, c1, c2, state);
-  drawVLine(c1, r1, r2, state);
-  drawVLine(c2, r1, r2, state);
-}
-
-bool MD_MAX72XX::drawLine(uint8_t r1, uint16_t c1, uint8_t r2, uint16_t c2, bool state)
-// draw an arbitrary line between two points using Bresentham's line algorithm
-{
-  if (r1 >= ROW_SIZE || r2 >= ROW_SIZE || c1 >= getColumnCount() || c2 >= getColumnCount())
-    return(false);
-
-  if (c1 > c2)
-  {
-    uint16_t  t;
-    t = c1;   c1 = c2;    c2 = t;   // swap c1/c2
-    t = r1;   r1 = r2;    r2 = t;   // swap r1/r2
-  }
-
-  // Bresentham's line algorithm
-  int16_t dc = abs(c2-c1);
-  int16_t sc = c1<c2 ? 1 : -1;
-  int16_t dr = abs(r2-r1);
-  int16_t sr = r1<r2 ? 1 : -1;
-  int16_t err = (dc>dr ? dc : -dr)/2;
-  int16_t e2;
-
-  for(;;)
-  {
-    setPoint(r1, c1, state);
-    if (c1 == c2 && r1 == r2) break;
-    e2 = err;
-    if (e2 >-dc) { err -= dr; c1 += sc; }
-    if (e2 < dr) { err += dc; r1 += sr; }
-  }
-
-  if (_updateEnabled) flushBufferAll();
-
-  return(true);
-}
-
-// used in getPoint and setPoint!
-#if HW_DIG_ROWS
-#define R r
-#define C c
-#else
-#define R c
-#define C r
-#endif
-
 bool MD_MAX72XX::getPoint(uint8_t r, uint16_t c)
 {
-  uint8_t	buf = c/COL_SIZE;
+  uint8_t buf = c/COL_SIZE;
 
   c %= COL_SIZE;
   PRINT("\ngetPoint: (", buf);
@@ -176,12 +86,15 @@ bool MD_MAX72XX::getPoint(uint8_t r, uint16_t c)
   if ((buf > LAST_BUFFER) || (r >= ROW_SIZE) || (c >= COL_SIZE))
     return(false);
 
-  return(bitRead(_matrix[buf].dig[HW_ROW(R)], HW_COL(C)) == 1);
+  if (_hwDigRows)
+    return(bitRead(_matrix[buf].dig[HW_ROW(r)], HW_COL(c)) == 1);
+  else
+    return(bitRead(_matrix[buf].dig[HW_ROW(c)], HW_COL(r)) == 1);
 }
 
 bool MD_MAX72XX::setPoint(uint8_t r, uint16_t c, bool state)
 {
-  uint8_t	buf = c/COL_SIZE;
+  uint8_t buf = c/COL_SIZE;
   c %= COL_SIZE;
 
   PRINT("\nsetPoint: (", buf);
@@ -193,19 +106,29 @@ bool MD_MAX72XX::setPoint(uint8_t r, uint16_t c, bool state)
     return(false);
 
   if (state)
-    bitSet(_matrix[buf].dig[HW_ROW(R)], HW_COL(C));
+  {
+    if (_hwDigRows)
+      bitSet(_matrix[buf].dig[HW_ROW(r)], HW_COL(c));
+    else
+      bitSet(_matrix[buf].dig[HW_ROW(c)], HW_COL(r));
+  }
   else
-    bitClear(_matrix[buf].dig[HW_ROW(R)], HW_COL(C));
+  {
+    if (_hwDigRows)
+      bitClear(_matrix[buf].dig[HW_ROW(r)], HW_COL(c));
+    else
+      bitClear(_matrix[buf].dig[HW_ROW(c)], HW_COL(r));
+  }
 
-  bitSet(_matrix[buf].changed, HW_ROW(R));
+  if (_hwDigRows)
+    bitSet(_matrix[buf].changed, HW_ROW(r));
+  else
+    bitSet(_matrix[buf].changed, HW_ROW(c));
 
   if (_updateEnabled) flushBuffer(buf);
 
   return(true);
 }
-
-#undef  R
-#undef  C
 
 bool MD_MAX72XX::setRow(uint8_t startDev, uint8_t endDev, uint8_t r, uint8_t value)
 {
