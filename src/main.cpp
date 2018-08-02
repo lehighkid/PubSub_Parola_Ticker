@@ -118,7 +118,7 @@ void mqtt_connect()
     //ESP.wdtFeed();
     DPRINTLN("\nConnecting to MQTT");
     // Check number of failed attempts so far
-    if(failedAttempts <= failed_breakout_limit) {
+    if(failedAttempts < failed_breakout_limit) {
       // Attempt to connect and check status
       //if (client.connect(mqtt_client_type.c_str(), mqtt_username, mqtt_password)){
       if (client.connect(mqtt_client_type.c_str())){
