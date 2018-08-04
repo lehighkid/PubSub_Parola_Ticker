@@ -14,17 +14,11 @@
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>
 
-// Define WiFiManager
-WiFiManager wifiManager;
-
 // Define wifi client for use in PubSubClient for MQTT
 WiFiClientSecure espClient;
 
 // Define the MQTT object
 PubSubClient client(mqtt_server, mqtt_port, espClient);
-
-// Define the NTP pool object
-NTPtime NTPch("us.pool.ntp.org");
 
 // Define hardware SPI connection for Parola
 // TODO: Add options to config for HW vs. SW and update definition here
@@ -36,30 +30,12 @@ Queue<mqttMessage> mqttMessageQueue(mqtt_msg_queue_max_limit);
 // Create display message queue for processing
 Queue<message> messageQueue(msg_queue_max_limit);
 
-// Iterates until a wifi connection is made and status updated accordingly
-void wifi_connect()
-{
-  // We start by connecting to a WiFi network
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(wifi_ssid, wifi_password);
-  DPRINT("\nWait for WiFi... ");
-
-  while (WiFi.status() != WL_CONNECTED) {
-    DPRINT(".");
-    delay(wifi_recon_time);
-  }
-  DPRINTLN("\nWiFi connected");
-  DPRINTLN("IP address: ");
-  DPRINTLN(WiFi.localIP());
-
-  delay(wifi_recon_time);
-}
-
 bool wifi_verifyTLS()
 {
   // Use WiFiClientSecure class to create TLS connection
   DPRINT("\nConnecting to ");
   DPRINTLN(mqtt_server);
+  espClient = WiFiClientSecure();
   if (!espClient.connect(mqtt_server, mqtt_port)) {
     DPRINTLN("\nConnection failed");
     return false;
@@ -152,72 +128,66 @@ void mqtt_connect()
   }
 }
 
-String convertPayloadToString(byte* payload, unsigned int length)
+void destroy_message(message msg)
 {
-  payload[length]     = null_str;   // add null string terminator for String conversion
-  return String((char*)payload);
-}
-
-message createDateTimeMessage(strDateTime curr_dateTime)
-{
-  // Test if parsing succeeds
-  if (curr_dateTime.valid)
-  {
-    return message {
-      "DATETIME",
-      (const char*)curr_dateTime.second,
-      P.getSpeed(),
-      P.getPause(),
-      3000,
-      1,
-      16,
-      16,
-      "SCROLL",
-      (unsigned long)millis(),
-      2,
-      0,
-      "INSERT",
-      false
-    };
-  }
-  return message {};
+  free((void*)msg.id);
+  free((void*)msg.text);
+  free((void*)msg.displayType);
+  free((void*)msg.action);
 }
 
 message convertmqttMessageToMessage(mqttMessage mqtt_msg)
 {
-  // Extract mqtt message components from struct
-  byte* payload         = mqtt_msg.payload;
-  unsigned int length   = mqtt_msg.length;
-
+  const size_t bufferSize = JSON_ARRAY_SIZE(12) + 256;
   // Messages should be in JSON format
-  DynamicJsonBuffer  jsonBuffer;
+  DynamicJsonBuffer  jsonBuffer(bufferSize);
+  //StaticJsonBuffer<500> jsonBuffer;
+
+  char charPayload[mqtt_msg.length];
+
+  for (int i = 0; i < mqtt_msg.length; i++) {
+    //Serial.print((char)payload[i]);
+    charPayload[i] = mqtt_msg.payload[i];
+  }
 
   // Parse payload of JSON format
-  JsonObject& payRoot = jsonBuffer.parseObject(convertPayloadToString(payload, length));
+  JsonObject& payRoot = jsonBuffer.parseObject(charPayload);
+
+  message msg = {};
 
   // Test if parsing succeeds
   if (payRoot.success())
   {
-    unsigned long endTick = millis() + (long)payRoot["duration"];
-
-    return message {
-      strdup(payRoot["messageId"]),
-      strdup(payRoot["text"]),
-      payRoot["speed"],
-      payRoot["pause"],
-      payRoot["duration"],
-      payRoot["justification"],
-      payRoot["entryEffect"],
-      payRoot["exitEffect"],
-      strdup(payRoot["displayType"]),
-      endTick,
-      payRoot["runCount"],
-      0,
-      strdup(payRoot["action"]),
-      payRoot["wipe"]
-    };
+    // Using strdup causes memory leak unless cleaned up using free() - see message_destory()
+    msg.id = strdup(payRoot["messageId"]);
+    msg.text = strdup(payRoot["text"]);
+    msg.speed = payRoot["speed"];
+    msg.pause = payRoot["pause"];
+    msg.duration = payRoot["duration"];
+    msg.justification = payRoot["justification"];
+    msg.entryEffect = payRoot["entryEffect"];
+    msg.exitEffect = payRoot["exitEffect"];
+    msg.displayType = strdup(payRoot["displayType"]);
+    msg.endTick = millis() + (long)payRoot["duration"];
+    msg.runCount = payRoot["runCount"];
+    msg.timesRun = 0;
+    msg.action = strdup(payRoot["action"]);
+    msg.queueWipe = payRoot["wipe"];
   }
-  return message {};
+  return msg;
+}
+
+// Unused function currently - causes wdt reset - need to figure out how to return dynamic array
+char* convert_payloadToChar(byte* payload, unsigned int length)
+{
+  char charPayload[length];
+
+  for (int i = 0; i < length; i++) {
+    //Serial.print((char)payload[i]);
+    charPayload[i] = payload[i];
+  }
+
+  return charPayload;
 }
 
 // Debug function used to output mqtt message details
@@ -227,8 +197,11 @@ void print_mqttMessage(mqttMessage mqttMessage)
   DPRINT("Topic: ");
   DPRINTLN(mqttMessage.topic);
   DPRINT("Payload: ");
-  DPRINTLN(convertPayloadToString(mqttMessage.payload, mqttMessage.length));
-  DPRINT("Length: ");
+  for (int i = 0; i < mqttMessage.length; i++) {
+    DPRINT((char)mqttMessage.payload[i]);
+  }
+  //DPRINTLN(convert_payloadToChar(mqttMessage.payload, mqttMessage.length));
+  DPRINT("\nLength: ");
   DPRINTLN(mqttMessage.length);
 }
 
@@ -263,32 +236,11 @@ void print_message(message message)
   DPRINT("Now: ");
   DPRINTLN(millis());
   DPRINT("Msg Action: ");
-  DPRINTLN(message.msgAction);
+  DPRINTLN(message.action);
   DPRINT("Queue Wipe: ");
   DPRINTLN(message.queueWipe);
   DPRINT("\nHeap: ");
   DPRINTLN(ESP.getFreeHeap());
-}
-
-// Debug function used to output datetime details
-void print_DateTime(strDateTime dateTime){
-  if(curr_dateTime.valid){
-    DPRINTLN("\nCurrent Date: ");
-    DPRINT(curr_dateTime.dayofWeek);
-    DPRINT(" ");
-    DPRINT(curr_dateTime.year);
-    DPRINT("-");
-    DPRINT(curr_dateTime.month);
-    DPRINT("-");
-    DPRINT(curr_dateTime.day);
-
-    DPRINTLN("\nCurrent Time: ");
-    DPRINT(curr_dateTime.hour);
-    DPRINT(":");
-    DPRINT(curr_dateTime.minute);
-    DPRINT(":");
-    DPRINTLN(curr_dateTime.second);
-  }
 }
 
 // Conversion function - int to textPosition_t
@@ -366,14 +318,18 @@ void send_ping()
 // Used to wipe out all messages - leaves messages queue empty
 void wipe_messages()
 {
-  messageQueue.clear();
+  while(messageQueue.count() > 0)
+  {
+    destroy_message(messageQueue.pop());
+  }
+  //messageQueue.clear();
   DPRINTLN("\nMessage Queue has been wiped");
 }
 
 // Used to delete specific message from messages queue - uses id
 void delete_message(const char* id)
 {
-  // TODO: Build looping logic to iterate message queue - possibly move from one queue to another
+  // TODO: Build looping logic to iterate message queue - possibly move from one queue to another; don't forget to destory bc of strdup
   DPRINTLN("\nDelete requested but not implemented");
 }
 
@@ -402,7 +358,7 @@ void receive_message(const char* topic, byte* payload, unsigned int length)
   toggle_pin(pin_led, 100, 3);
 
   // Add mqtt message to the queue to be processed at next loop
-  mqttMessageQueue.push(mqttMessage {strdup(topic), payload, length});
+  mqttMessageQueue.push(mqttMessage {(char*)topic, payload, length});
 }
 
 // Used to decipher incoming MQTT messages - currently hardcoded instances
@@ -419,20 +375,15 @@ void process_message()
     // Pull the latest - FIFO
     mqttMessage mqtt_msg = mqttMessageQueue.pop();
 
-    //print_mqttMessage(mqtt_msg);
-
-    // Extract mqtt message components from struct
-    char* topic           = strdup(mqtt_msg.topic);
-
     // Check message topic
-    if(strstr(topic, mqtt_topic_msg))
+    if(strstr(mqtt_msg.topic, mqtt_topic_msg))
     {
       message curMessage = convertmqttMessageToMessage(mqtt_msg);
 
       //print_message(curMessage);
 
       bool queueWipe = curMessage.queueWipe;
-      const char* msgAction = curMessage.msgAction;
+      //const char* action = curMessage.action;
 
       // Check if queue wipe is requested
       if(queueWipe){
@@ -441,14 +392,14 @@ void process_message()
       }
 
       // Check for Delete action and that Queue wipe wasn't requested
-      if(strcmp(msgAction, mqtt_msg_del) == 0 && !queueWipe) {
+      if(strcmp(curMessage.action, mqtt_msg_del) == 0 && !queueWipe) {
         // Attempt to delete message
         delete_message(curMessage.id);
         return;
       }
 
       // Check for Update action and that Queue wipe wasn't requested
-      if(strcmp(msgAction, mqtt_msg_upd) == 0 && !queueWipe) {
+      if(strcmp(curMessage.action, mqtt_msg_upd) == 0 && !queueWipe) {
         // Attempt to update message
         update_message(curMessage);
         return;
@@ -457,26 +408,26 @@ void process_message()
       // Local variable to identify whether Insert action is necessary for Upsert action
       bool upsIns = false;
       // Check for Upsert action and that Queue wipe wasn't requested
-      if(strcmp(msgAction, mqtt_msg_ups) == 0 && !queueWipe) {
+      if(strcmp(curMessage.action, mqtt_msg_ups) == 0 && !queueWipe) {
         // Attempt to update message and set insert flag if update fails
         upsIns = !update_message(curMessage);
       }
 
       // Check for Insert OR Upsert AND and Failed Update
-      if(strcmp(msgAction, mqtt_msg_ins) == 0 || (strcmp(msgAction, mqtt_msg_ups) == 0 && upsIns)){
+      if(strcmp(curMessage.action, mqtt_msg_ins) == 0 || (strcmp(curMessage.action, mqtt_msg_ups) == 0 && upsIns)){
         // Attempt to insert message
         add_message(curMessage);
         return;
       }
     }
     // Check if Reset topic specified
-    else if (strstr(topic, mqtt_topic_rst))
+    else if (strstr(mqtt_msg.topic, mqtt_topic_rst))
     {
       DPRINTLN("\nSending restart command");
       ESP.restart();  // Not sure if this is the right command...
     }
     // Check if Info topic specified
-    else if (strstr(topic, mqtt_topic_info))
+    else if (strstr(mqtt_msg.topic, mqtt_topic_info))
     {
       DPRINT("\nInfo topic received");
       //TODO: Add message back w/ settings, status, etc.
@@ -484,7 +435,7 @@ void process_message()
     // Unknown topic specified
     else {
       DPRINT("\nMessage topic unknown: ");
-      DPRINTLN(topic);
+      DPRINTLN(mqtt_msg.topic);
     }
   }
 }
@@ -508,6 +459,7 @@ void set_message()
     add_message(curMessage);
   } else {
     // Message EOL or has no text - ignore and exit
+    destroy_message(curMessage);
     return;
   }
 
@@ -519,16 +471,16 @@ void set_message()
   textEffect_t    exitEffect  =   get_effect(curMessage.exitEffect);
 
   // Convert text to char*
-  char* msgText = strdup(curMessage.text);
+  //char* msgText = (char*)curMessage.text;
 
   // Set  message based on display type
-  if(strcmp(curMessage.displayType, "SCROLL") == 0)
+  if(strcmp((curMessage.displayType), "SCROLL") == 0)
   {
-    P.displayScroll(msgText, just, entryEffect, curMessage.speed);
+    P.displayScroll((char*)(curMessage.text), just, entryEffect, curMessage.speed);
   }
   else
   {
-    P.displayText(msgText, just, curMessage.speed, curMessage.pause, entryEffect, exitEffect);
+    P.displayText((char*)curMessage.text, just, curMessage.speed, curMessage.pause, entryEffect, exitEffect);
   }
 }
 
@@ -537,34 +489,6 @@ void setup_parola()
 {
   P.begin();
   P.setInvert(false);
-
-  if(startup_seq_enabled){
-    DPRINTLN("\nStartup Seq Enabled...");
-
-    P.displayText((char*)startup_seq_txt, PA_CENTER, 15/*P.getSpeed()*/, 3000/*P.getPause()*/, PA_NO_EFFECT, PA_NO_EFFECT);
-    P.setIntensity(0);
-
-    // Startup brightness scan loop
-    for (uint8_t i = parola_init_intensity; i <= parola_max_intensity; i++){
-      P.setIntensity(i);
-
-      DPRINTLN("\nIntensitiy level: ");
-      DPRINTLN(i);
-
-      delay(parola_incr_intensity);
-    }
-
-    P.displayClear();
-    delay(parola_incr_intensity);
-  }
-  else {
-    DPRINTLN("\nStartup Seq Disabled...");
-
-    P.setIntensity(parola_max_intensity);
-
-    DPRINTLN("\nIntensitiy level: ");
-    DPRINTLN(parola_max_intensity);
-  }
 
   // Override '^' with custom character for degrees F
   P.addChar('^', degF);
@@ -592,6 +516,9 @@ void setup()
 
   // Setup Parola
   setup_parola();
+
+  // Define WiFiManager
+  WiFiManager wifiManager;
 
   //reset saved settings
   //wifiManager.resetSettings();
@@ -641,25 +568,6 @@ void loop()
         // Reset timer
         lastMsg = now;
       }
-      /* JUST BROKEN - REVISIT ANOTHER TIME */
-      /*
-      // Not sure why message causes panic
-      if(now - lastTimeCheck > timeCheck_int){
-        // Set current date and time from NTP
-        strDateTime curr_dateTime = NTPch.getNTPtime(-5.0, 2);
-        if(curr_dateTime.valid)
-        {
-          print_DateTime(curr_dateTime);
-          message msgDateTime = createDateTimeMessage(curr_dateTime);
-          if(strcmp(msgDateTime.text, "\0") != 0){
-            print_message(msgDateTime);
-            add_message(msgDateTime);
-          }
-        }
-        lastTimeCheck = now;
-      }
-      */
-
       // Provide next sequenced message in queue
       set_message();
       //P.displayReset();

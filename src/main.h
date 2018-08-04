@@ -20,7 +20,7 @@ void mqtt_subscribe();
 // [Re]Connect to MQTT Broker then subscribe to topics
 void mqtt_connect();
 
-String convertPayloadToString(byte* payload, unsigned int length);
+char* convert_payloadToChar(byte* payload, unsigned int length);
 
 message convertmqttMessageToMessage(mqttMessage mqtt_msg);
 

@@ -105,7 +105,7 @@ typedef struct
   unsigned long endTick;
   int           runCount;
   int           timesRun;
-  const char*   msgAction;
+  const char*   action;
   bool          queueWipe;
 } message;
 
