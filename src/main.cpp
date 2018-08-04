@@ -14,10 +14,17 @@
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>
 
+// Define WiFiManager
+WiFiManager wifiManager;
+
 // Define wifi client for use in PubSubClient for MQTT
 WiFiClientSecure espClient;
+
 // Define the MQTT object
 PubSubClient client(mqtt_server, mqtt_port, espClient);
+
+// Define the NTP pool object
+NTPtime NTPch("us.pool.ntp.org");
 
 // Define hardware SPI connection for Parola
 // TODO: Add options to config for HW vs. SW and update definition here
@@ -151,6 +158,31 @@ String convertPayloadToString(byte* payload, unsigned int length)
   return String((char*)payload);
 }
 
+message createDateTimeMessage(strDateTime curr_dateTime)
+{
+  // Test if parsing succeeds
+  if (curr_dateTime.valid)
+  {
+    return message {
+      "DATETIME",
+      (const char*)curr_dateTime.second,
+      P.getSpeed(),
+      P.getPause(),
+      3000,
+      1,
+      16,
+      16,
+      "SCROLL",
+      (unsigned long)millis(),
+      2,
+      0,
+      "INSERT",
+      false
+    };
+  }
+  return message {};
+}
+
 message convertmqttMessageToMessage(mqttMessage mqtt_msg)
 {
   // Extract mqtt message components from struct
@@ -236,6 +268,27 @@ void print_message(message message)
   DPRINTLN(message.queueWipe);
   DPRINT("\nHeap: ");
   DPRINTLN(ESP.getFreeHeap());
+}
+
+// Debug function used to output datetime details
+void print_DateTime(strDateTime dateTime){
+  if(curr_dateTime.valid){
+    DPRINTLN("\nCurrent Date: ");
+    DPRINT(curr_dateTime.dayofWeek);
+    DPRINT(" ");
+    DPRINT(curr_dateTime.year);
+    DPRINT("-");
+    DPRINT(curr_dateTime.month);
+    DPRINT("-");
+    DPRINT(curr_dateTime.day);
+
+    DPRINTLN("\nCurrent Time: ");
+    DPRINT(curr_dateTime.hour);
+    DPRINT(":");
+    DPRINT(curr_dateTime.minute);
+    DPRINT(":");
+    DPRINTLN(curr_dateTime.second);
+  }
 }
 
 // Conversion function - int to textPosition_t
@@ -485,6 +538,34 @@ void setup_parola()
   P.begin();
   P.setInvert(false);
 
+  if(startup_seq_enabled){
+    DPRINTLN("\nStartup Seq Enabled...");
+
+    P.displayText((char*)startup_seq_txt, PA_CENTER, 15/*P.getSpeed()*/, 3000/*P.getPause()*/, PA_NO_EFFECT, PA_NO_EFFECT);
+    P.setIntensity(0);
+
+    // Startup brightness scan loop
+    for (uint8_t i = parola_init_intensity; i <= parola_max_intensity; i++){
+      P.setIntensity(i);
+
+      DPRINTLN("\nIntensitiy level: ");
+      DPRINTLN(i);
+
+      delay(parola_incr_intensity);
+    }
+
+    P.displayClear();
+    delay(parola_incr_intensity);
+  }
+  else {
+    DPRINTLN("\nStartup Seq Disabled...");
+
+    P.setIntensity(parola_max_intensity);
+
+    DPRINTLN("\nIntensitiy level: ");
+    DPRINTLN(parola_max_intensity);
+  }
+
   // Override '^' with custom character for degrees F
   P.addChar('^', degF);
 
@@ -512,12 +593,9 @@ void setup()
   // Setup Parola
   setup_parola();
 
-  // Setup WiFi
-  //wifi_connect();
-  WiFiManager wifiManager;
   //reset saved settings
   //wifiManager.resetSettings();
-
+  // Connect to wifi
   wifiManager.autoConnect(wifi_ap_name);
 
   espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
@@ -563,6 +641,25 @@ void loop()
         // Reset timer
         lastMsg = now;
       }
+      /* JUST BROKEN - REVISIT ANOTHER TIME */
+      /*
+      // Not sure why message causes panic
+      if(now - lastTimeCheck > timeCheck_int){
+        // Set current date and time from NTP
+        strDateTime curr_dateTime = NTPch.getNTPtime(-5.0, 2);
+        if(curr_dateTime.valid)
+        {
+          print_DateTime(curr_dateTime);
+          message msgDateTime = createDateTimeMessage(curr_dateTime);
+          if(strcmp(msgDateTime.text, "\0") != 0){
+            print_message(msgDateTime);
+            add_message(msgDateTime);
+          }
+        }
+        lastTimeCheck = now;
+      }
+      */
+
       // Provide next sequenced message in queue
       set_message();
       //P.displayReset();
