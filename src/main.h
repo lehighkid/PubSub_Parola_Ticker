@@ -45,6 +45,9 @@ void send_ping();
 // Used to wipe out all messages - leaves messages queue empty
 void wipe_messages();
 
+// Used to free up malloc memory used by str functions
+void destroy_message(message msg);
+
 // Used to delete specific message from messages queue - uses id
 void delete_message(const char* id);
 

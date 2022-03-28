@@ -4,6 +4,7 @@
   Multiple example sketchs and code leveraged by
   Aaron Drago (lehighkid@gmail.com) for use in AutoRunHome
 */
+
 #include <Arduino.h>
 #include "config.h"
 #include "main.h"
@@ -15,7 +16,8 @@
 #include <WiFiManager.h>
 
 // Define wifi client for use in PubSubClient for MQTT
-WiFiClientSecure espClient;
+//WiFiClientSecure espClient;
+WiFiClient espClient;
 
 // Define the MQTT object
 PubSubClient client(mqtt_server, mqtt_port, espClient);
@@ -35,16 +37,16 @@ bool wifi_verifyTLS()
   // Use WiFiClientSecure class to create TLS connection
   DPRINT("\nConnecting to ");
   DPRINTLN(mqtt_server);
-  espClient = WiFiClientSecure();
+  //espClient = WiFiClient();  //WiFiClientSecure();
   if (!espClient.connect(mqtt_server, mqtt_port)) {
     DPRINTLN("\nConnection failed");
     return false;
   }
 
-  if (!espClient.verify(mqtt_fingerprint, mqtt_server)) {
-    DPRINT("\nCertificate doesn't match");
-    return false;
-  }
+  // if (!espClient.verify(mqtt_fingerprint, mqtt_server)) {
+  //   DPRINT("\nCertificate doesn't match");
+  //   return false;
+  // }
   return true;
 }
 
@@ -103,8 +105,8 @@ void mqtt_connect()
     // Check number of failed attempts so far
     if(failedAttempts < failed_breakout_limit) {
       // Attempt to connect and check status
-      //if (client.connect(mqtt_client_type.c_str(), mqtt_username, mqtt_password)){
-      if (client.connect(mqtt_client_type.c_str())){
+      //if (client.connect(mqtt_client_id.c_str(), mqtt_username, mqtt_password)){
+      if (client.connect(mqtt_client_id.c_str(), mqtt_username, mqtt_password)){
         DPRINTLN("\nMQTT connected");
         mqtt_subscribe();
       // Connection was unnsuccessful
@@ -134,14 +136,15 @@ void destroy_message(message msg)
   free((void*)msg.text);
   free((void*)msg.displayType);
   free((void*)msg.action);
+  //free(msg);
 }
 
 message convertmqttMessageToMessage(mqttMessage mqtt_msg)
 {
   const size_t bufferSize = JSON_ARRAY_SIZE(12) + 256;
   // Messages should be in JSON format
-  DynamicJsonBuffer  jsonBuffer(bufferSize);
-  //StaticJsonBuffer<500> jsonBuffer;
+  DynamicJsonDocument jsonDocument(bufferSize);
+  //StaticJsonDocument<500> jsonDocument;
 
   char charPayload[mqtt_msg.length];
 
@@ -151,29 +154,38 @@ message convertmqttMessageToMessage(mqttMessage mqtt_msg)
   }
 
   // Parse payload of JSON format
-  JsonObject& payRoot = jsonBuffer.parseObject(charPayload);
+  //JsonObject payRoot = jsonBuffer.parseObject(charPayload);
+
+  auto error = deserializeJson(jsonDocument, charPayload);
+  if (error) {
+      Serial.print(F("deserializeJson() failed with code "));
+      Serial.println(error.c_str());
+      return {};
+  }
 
   message msg = {};
 
   // Test if parsing succeeds
-  if (payRoot.success())
-  {
+  // if (payRoot.success())
+  // {
     // Using strdup causes memory leak unless cleaned up using free() - see message_destory()
-    msg.id = strdup(payRoot["messageId"]);
-    msg.text = strdup(payRoot["text"]);
-    msg.speed = payRoot["speed"];
-    msg.pause = payRoot["pause"];
-    msg.duration = payRoot["duration"];
-    msg.justification = payRoot["justification"];
-    msg.entryEffect = payRoot["entryEffect"];
-    msg.exitEffect = payRoot["exitEffect"];
-    msg.displayType = strdup(payRoot["displayType"]);
-    msg.endTick = millis() + (long)payRoot["duration"];
-    msg.runCount = payRoot["runCount"];
+    msg.id = strdup(jsonDocument["messageId"]);
+    msg.text = strdup(jsonDocument["text"]);
+    msg.speed = jsonDocument["speed"];
+    msg.pause = jsonDocument["pause"];
+    msg.intensity = jsonDocument["intensity"];
+    msg.duration = jsonDocument["duration"];
+    msg.justification = jsonDocument["justification"];
+    msg.entryEffect = jsonDocument["entryEffect"];
+    msg.exitEffect = jsonDocument["exitEffect"];
+    msg.displayType = strdup(jsonDocument["displayType"]);
+    msg.sprite = jsonDocument["sprite"];
+    msg.endTick = millis() + (long)jsonDocument["duration"];
+    msg.runCount = jsonDocument["runCount"];
     msg.timesRun = 0;
-    msg.action = strdup(payRoot["action"]);
-    msg.queueWipe = payRoot["wipe"];
-  }
+    msg.action = strdup(jsonDocument["action"]);
+    msg.queueWipe = jsonDocument["wipe"];
+  // }
   return msg;
 }
 
@@ -215,6 +227,8 @@ void print_message(message message)
   DPRINTLN(message.text);
   DPRINT("DisplayType: ");
   DPRINTLN(message.displayType);
+  DPRINT("Sprite: ");
+  DPRINTLN(message.sprite);
   DPRINT("EntryEffect: ");
   DPRINTLN(message.entryEffect);
   DPRINT("ExitEffect: ");
@@ -223,6 +237,8 @@ void print_message(message message)
   DPRINTLN(message.speed);
   DPRINT("Pause: ");
   DPRINTLN(message.pause);
+  DPRINT("Intensity: ");
+  DPRINTLN(message.intensity);
   DPRINT("Justification: ");
   DPRINTLN(message.justification);
   DPRINT("Run Count: ");
@@ -257,42 +273,54 @@ textPosition_t get_justification(int just)
   return rtnJust;
 }
 
+sprite get_sprite(int spriteNum)
+{
+  // spriteNum = spriteNum % ARRAY_SIZE(sprites);
+  return sprites[spriteNum];
+}
+
 // Conversion function - int to textEffect_t
 textEffect_t get_effect(int effect)
 {
-  textEffect_t  rtnEffect = PA_SCROLL_LEFT;
-  switch (effect)
-  {
-    case 0:  rtnEffect = PA_PRINT;             break;
-    case 1:  rtnEffect = PA_SLICE;             break;
-    case 2:  rtnEffect = PA_MESH;              break;
-    case 3:  rtnEffect = PA_FADE;              break;
-    case 4:  rtnEffect = PA_WIPE;              break;
-    case 5:  rtnEffect = PA_WIPE_CURSOR;       break;
-    case 6:  rtnEffect = PA_OPENING;           break;
-    case 7:  rtnEffect = PA_OPENING_CURSOR;    break;
-    case 8:  rtnEffect = PA_BLINDS;            break;
-    case 9:  rtnEffect = PA_DISSOLVE;          break;
-    case 10: rtnEffect = PA_SCAN_HORIZ;        break;
-    case 11: rtnEffect = PA_SCAN_VERT;         break;
-    case 12: rtnEffect = PA_GROW_UP;           break;
-    case 13: rtnEffect = PA_GROW_DOWN;         break;
-    case 14: rtnEffect = PA_SCROLL_UP;         break;
-    case 15: rtnEffect = PA_SCROLL_DOWN;       break;
-    case 16: rtnEffect = PA_SCROLL_LEFT;       break;
-    case 17: rtnEffect = PA_SCROLL_RIGHT;      break;
-    case 18: rtnEffect = PA_SCROLL_UP_LEFT;    break;
-    case 19: rtnEffect = PA_SCROLL_UP_RIGHT;   break;
-    case 20: rtnEffect = PA_SCROLL_DOWN_LEFT;  break;
-    case 21: rtnEffect = PA_SCROLL_DOWN_RIGHT; break;
-    case 22: rtnEffect = PA_SPRITE;            break;
-    default: rtnEffect = PA_NO_EFFECT;         break;
-  }
+  // textEffect_t  rtnEffect = PA_SCROLL_LEFT;
+  // switch (effect)
+  // {
+  //   case 0:  rtnEffect = PA_PRINT;             break;
+  //   case 1:  rtnEffect = PA_SLICE;             break;
+  //   case 2:  rtnEffect = PA_MESH;              break;
+  //   case 3:  rtnEffect = PA_FADE;              break;
+  //   case 4:  rtnEffect = PA_WIPE;              break;
+  //   case 5:  rtnEffect = PA_WIPE_CURSOR;       break;
+  //   case 6:  rtnEffect = PA_OPENING;           break;
+  //   case 7:  rtnEffect = PA_OPENING_CURSOR;    break;
+  //   case 8:  rtnEffect = PA_BLINDS;            break;
+  //   case 9:  rtnEffect = PA_DISSOLVE;          break;
+  //   case 10: rtnEffect = PA_SCAN_HORIZ;        break;
+  //   case 11: rtnEffect = PA_SCAN_VERT;         break;
+  //   case 12: rtnEffect = PA_GROW_UP;           break;
+  //   case 13: rtnEffect = PA_GROW_DOWN;         break;
+  //   case 14: rtnEffect = PA_SCROLL_UP;         break;
+  //   case 15: rtnEffect = PA_SCROLL_DOWN;       break;
+  //   case 16: rtnEffect = PA_SCROLL_LEFT;       break;
+  //   case 17: rtnEffect = PA_SCROLL_RIGHT;      break;
+  //   case 18: rtnEffect = PA_SCROLL_UP_LEFT;    break;
+  //   case 19: rtnEffect = PA_SCROLL_UP_RIGHT;   break;
+  //   case 20: rtnEffect = PA_SCROLL_DOWN_LEFT;  break;
+  //   case 21: rtnEffect = PA_SCROLL_DOWN_RIGHT; break;
+  //   case 22: rtnEffect = PA_SPRITE;            break;
+  //   default: rtnEffect = PA_NO_EFFECT;         break;
+  // }
 
-  return rtnEffect;
 
-  // TODO:  change to array/struct and do lookup by int vs. switch
-  // TODO:  -1 would yield Random - add logic
+  return textEffects[effect];
+
+  // COMPLETE:  change to array/struct and do lookup by int vs. switch
+  // NA:  -1 would yield Random - add logic - USE PA_RANDOM
+}
+
+void set_intensity(uint8_t intensity)
+{
+  P.setIntensity(intensity); // 0-15 range
 }
 
 // Used to send MQTT messages (aka publish)
@@ -303,6 +331,7 @@ void send_message(const char* channel, const char* data)
   DPRINTLN(mqtt_endpoint_message);
   toggle_pin(pin_led, 100, 1);
   client.publish(mqtt_endpoint_message, data);
+  //free((void*)mqtt_endpoint_message);
 }
 
 // Ping function to ensure keep alive on MQTT server - special call of send_message
@@ -313,6 +342,7 @@ void send_ping()
   DPRINT("\nSending ping: ");
   DPRINTLN(ping_msg);
   send_message(mqtt_topic_ping, ping_msg);
+  //free((void*)ping_msg);
 }
 
 // Used to wipe out all messages - leaves messages queue empty
@@ -322,7 +352,7 @@ void wipe_messages()
   {
     destroy_message(messageQueue.pop());
   }
-  //messageQueue.clear();
+  messageQueue.clear();
   DPRINTLN("\nMessage Queue has been wiped");
 }
 
@@ -426,6 +456,27 @@ void process_message()
       DPRINTLN("\nSending restart command");
       ESP.restart();  // Not sure if this is the right command...
     }
+    // Check if Power topic specified
+    else if (strstr(mqtt_msg.topic, mqtt_topic_pwr_on))
+    {
+      DPRINTLN("\nSetting power on");
+      P.displayShutdown(false);
+      powerStat = true;
+    }
+    // Check if Power topic specified
+    else if (strstr(mqtt_msg.topic, mqtt_topic_pwr_off))
+    {
+      DPRINTLN("\nSetting power off");
+      P.displayShutdown(true);
+      powerStat = false;
+    }
+    // Check if Power topic specified
+    else if (strstr(mqtt_msg.topic, mqtt_topic_pwr_tog))
+    {
+      DPRINTLN("\nSetting power toggle");
+      P.displayShutdown(powerStat);
+      powerStat = !powerStat;
+    }
     // Check if Info topic specified
     else if (strstr(mqtt_msg.topic, mqtt_topic_info))
     {
@@ -473,6 +524,8 @@ void set_message()
   // Convert text to char*
   //char* msgText = (char*)curMessage.text;
 
+  set_intensity(curMessage.intensity);
+
   // Set  message based on display type
   if(strcmp((curMessage.displayType), "SCROLL") == 0)
   {
@@ -481,6 +534,12 @@ void set_message()
   else
   {
     P.displayText((char*)curMessage.text, just, curMessage.speed, curMessage.pause, entryEffect, exitEffect);
+
+    if(curMessage.sprite >= 0)
+    {
+      sprite curSprite = get_sprite(curMessage.sprite);
+      P.setSpriteData(curSprite.entry, curSprite.entryWidth, curSprite.entryFrames, curSprite.exit, curSprite.exitWidth, curSprite.exitFrames );
+    }
   }
 }
 
@@ -521,12 +580,12 @@ void setup()
   WiFiManager wifiManager;
 
   //reset saved settings
-  //wifiManager.resetSettings();
+  // wifiManager.resetSettings();
   // Connect to wifi
   wifiManager.autoConnect(wifi_ap_name);
 
-  espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
-  espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
+  // espClient.setCertificate(certificates_esp8266_bin_crt, certificates_esp8266_bin_crt_len);
+  // espClient.setPrivateKey(certificates_esp8266_bin_key, certificates_esp8266_bin_key_len);
 
   // Setup MQTT
   client.setCallback(receive_message);
@@ -568,9 +627,14 @@ void loop()
         // Reset timer
         lastMsg = now;
       }
-      // Provide next sequenced message in queue
-      set_message();
-      //P.displayReset();
+      if(powerStat){
+        // Provide next sequenced message in queue
+        set_message();
+        //P.displayReset();
+      }
+      else {
+        wipe_messages();
+      }
     }
   }
 }
